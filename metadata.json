@@ -1,0 +1,5 @@
+{
+  "name": "Neural Network Backpropagation Simulator",
+  "description": "A visual, interactive simulator for understanding neural network backpropagation and gradient descent.",
+  "requestFramePermissions": []
+}
