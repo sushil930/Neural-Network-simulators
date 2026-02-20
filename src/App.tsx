@@ -4,14 +4,16 @@ import { Sidebar } from './components/Sidebar';
 import { NetworkCanvas } from './components/NetworkCanvas';
 import { DetailsCard } from './components/DetailsCard';
 import { WeightEditPopover } from './components/WeightEditPopover';
+import { EducationPage } from './components/EducationPage';
 import { NeuronDetails, WeightDetails } from './types';
-import { Activity, Zap } from 'lucide-react';
+import { Activity, Zap, BookOpen } from 'lucide-react';
 
 export default function App() {
   const nn = useNeuralNetwork();
   
   const [selectedNeuron, setSelectedNeuron] = useState<NeuronDetails | null>(null);
   const [selectedWeight, setSelectedWeight] = useState<WeightDetails | null>(null);
+  const [page, setPage] = useState<'simulator' | 'education'>('simulator');
 
   const handlePlayPause = () => {
     if (nn.isPlaying) {
@@ -56,6 +58,17 @@ export default function App() {
     }
   };
 
+  if (page === 'education') {
+    return (
+      <EducationPage
+        state={nn.state}
+        trainingLog={nn.trainingLog}
+        onBack={() => setPage('simulator')}
+        onClearLog={nn.clearLog}
+      />
+    );
+  }
+
   return (
     <div className="flex h-screen w-full bg-slate-950 overflow-hidden font-sans text-slate-200 selection:bg-indigo-500/30">
       {/* Sidebar Controls */}
@@ -98,18 +111,28 @@ export default function App() {
           </div>
 
           {/* Phase Indicator Pill */}
-          <div className={`
-            px-4 py-2 rounded-full font-bold text-sm shadow-lg backdrop-blur border transition-all duration-300
-            ${nn.phase === 'IDLE' ? 'bg-slate-800/80 border-slate-600 text-slate-300' : ''}
-            ${nn.phase === 'FORWARD' ? 'bg-blue-900/80 border-blue-500 text-blue-200' : ''}
-            ${nn.phase === 'ERROR' ? 'bg-red-900/80 border-red-500 text-red-200' : ''}
-            ${nn.phase === 'BACKWARD' ? 'bg-purple-900/80 border-purple-500 text-purple-200' : ''}
-            ${nn.phase === 'UPDATE' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-200' : ''}
-          `}>
-            <div className="flex items-center gap-2">
-              {nn.phase === 'FORWARD' && <Activity className="w-4 h-4 animate-pulse" />}
-              {nn.phase === 'UPDATE' && <Zap className="w-4 h-4 animate-pulse" />}
-              {nn.phase} PHASE
+          <div className="flex items-center gap-2 pointer-events-auto">
+            <button
+              onClick={() => setPage('education')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full font-medium text-sm shadow-lg backdrop-blur border bg-indigo-900/80 border-indigo-500 text-indigo-200 hover:bg-indigo-800/80 transition-colors"
+              title="Training Log & Formulas"
+            >
+              <BookOpen className="w-4 h-4" />
+              Log & Formulas
+            </button>
+            <div className={`
+              px-4 py-2 rounded-full font-bold text-sm shadow-lg backdrop-blur border transition-all duration-300
+              ${nn.phase === 'IDLE' ? 'bg-slate-800/80 border-slate-600 text-slate-300' : ''}
+              ${nn.phase === 'FORWARD' ? 'bg-blue-900/80 border-blue-500 text-blue-200' : ''}
+              ${nn.phase === 'ERROR' ? 'bg-red-900/80 border-red-500 text-red-200' : ''}
+              ${nn.phase === 'BACKWARD' ? 'bg-purple-900/80 border-purple-500 text-purple-200' : ''}
+              ${nn.phase === 'UPDATE' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-200' : ''}
+            `}>
+              <div className="flex items-center gap-2">
+                {nn.phase === 'FORWARD' && <Activity className="w-4 h-4 animate-pulse" />}
+                {nn.phase === 'UPDATE' && <Zap className="w-4 h-4 animate-pulse" />}
+                {nn.phase} PHASE
+              </div>
             </div>
           </div>
         </div>

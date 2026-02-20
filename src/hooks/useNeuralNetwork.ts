@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { NeuralNetworkState, SimulationPhase } from '../types';
+import { NeuralNetworkState, SimulationPhase, TrainingLogEntry } from '../types';
 import { sigmoid, sigmoidDerivativeFromActivation, mse, randomWeight } from '../utils/math';
 
 const DEFAULT_INPUTS = [0.1, 0.1];
@@ -113,6 +113,33 @@ export const useNeuralNetwork = () => {
   const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const [state, setState] = useState<NeuralNetworkState>(createInitialState);
+  const [trainingLog, setTrainingLog] = useState<TrainingLogEntry[]>([]);
+
+  const appendLog = useCallback((s: NeuralNetworkState, p: SimulationPhase) => {
+    setTrainingLog((prev) => {
+      const entry: TrainingLogEntry = {
+        epoch: s.epoch,
+        phase: p,
+        timestamp: Date.now(),
+        inputs: [...s.inputs],
+        target: s.target,
+        learningRate: s.learningRate,
+        hiddenActivations: s.hiddenActivations.map((a) => [...a]),
+        outputActivations: [...s.outputActivations],
+        hiddenNetInputs: s.hiddenNetInputs.map((a) => [...a]),
+        outputNetInputs: [...s.outputNetInputs],
+        outputGradients: [...s.outputGradients],
+        hiddenGradients: s.hiddenGradients.map((a) => [...a]),
+        weights: s.weights.map((m) => m.map((r) => [...r])),
+        biases: s.biases.map((r) => [...r]),
+        totalError: s.totalError,
+        rawError: s.rawError,
+      };
+      // Keep last 500 entries to avoid memory issues
+      const next = [...prev, entry];
+      return next.length > 500 ? next.slice(-500) : next;
+    });
+  }, []);
 
   const updateArchitecture = (newInputCount: number, newHiddenLayers: number[]) => {
     setState((prev) => ensureArchitecture(prev, newInputCount, newHiddenLayers));
@@ -277,38 +304,46 @@ export const useNeuralNetwork = () => {
 
   const nextStep = useCallback(() => {
     const current = phaseRef.current;
+    let nextPhase: SimulationPhase = 'IDLE';
     switch (current) {
       case 'IDLE':
       case 'UPDATE':
         stepForward();
-        setPhase('FORWARD');
-        phaseRef.current = 'FORWARD';
+        nextPhase = 'FORWARD';
         break;
       case 'FORWARD':
         stepError();
-        setPhase('ERROR');
-        phaseRef.current = 'ERROR';
+        nextPhase = 'ERROR';
         break;
       case 'ERROR':
         stepBackward();
-        setPhase('BACKWARD');
-        phaseRef.current = 'BACKWARD';
+        nextPhase = 'BACKWARD';
         break;
       case 'BACKWARD':
         stepUpdate();
-        setPhase('UPDATE');
-        phaseRef.current = 'UPDATE';
+        nextPhase = 'UPDATE';
         break;
-      default:
-        setPhase('IDLE');
-        phaseRef.current = 'IDLE';
     }
-  }, [stepForward, stepError, stepBackward, stepUpdate]);
+    setPhase(nextPhase);
+    phaseRef.current = nextPhase;
+    // Log after state update settles (use setTimeout to read latest state)
+    setTimeout(() => {
+      setState((s) => {
+        appendLog(s, nextPhase);
+        return s; // don't mutate
+      });
+    }, 0);
+  }, [stepForward, stepError, stepBackward, stepUpdate, appendLog]);
+
+  const clearLog = useCallback(() => {
+    setTrainingLog([]);
+  }, []);
 
   const reset = useCallback(() => {
     stopAutoPlay();
     setPhase('IDLE');
     phaseRef.current = 'IDLE';
+    setTrainingLog([]);
     setState((prev) => ({
       ...prev,
       epoch: 0,
@@ -398,5 +433,7 @@ export const useNeuralNetwork = () => {
     setLearningRate,
     updateWeight,
     updateBias,
+    trainingLog,
+    clearLog,
   };
 };

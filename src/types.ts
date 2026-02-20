@@ -59,3 +59,22 @@ export interface WeightDetails {
   targetIndex: number;
   value: number;
 }
+
+export interface TrainingLogEntry {
+  epoch: number;
+  phase: SimulationPhase;
+  timestamp: number;
+  inputs: number[];
+  target: number;
+  learningRate: number;
+  hiddenActivations: number[][];
+  outputActivations: number[];
+  hiddenNetInputs: number[][];
+  outputNetInputs: number[];
+  outputGradients: number[];
+  hiddenGradients: number[][];
+  weights: number[][][];
+  biases: number[][];
+  totalError: number;
+  rawError: number;
+}
