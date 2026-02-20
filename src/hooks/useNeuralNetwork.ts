@@ -5,139 +5,157 @@ import { sigmoid, sigmoidDerivativeFromActivation, mse, randomWeight } from '../
 const DEFAULT_INPUTS = [0.1, 0.1];
 const DEFAULT_TARGET = 0.1;
 const DEFAULT_LR = 0.2;
+const DEFAULT_HIDDEN_LAYERS = [2];
 
-// Initial specific scenario weights
-// w_i1_h1=0.6, w_i2_h1=-0.3, b_h1=0.3
-// We'll fill the rest with some reasonable defaults or randoms if not specified, 
-// but let's try to make a nice starting state.
-const INITIAL_WEIGHTS_IH = [
-  [0.6, -0.1, 0.2, 0.1, -0.2], // Input 1 weights to H1, H2, H3, H4, H5
-  [-0.3, 0.4, -0.5, 0.2, 0.3], // Input 2 weights
-  [0.1, -0.2, 0.3, -0.4, 0.5], // Input 3
-  [-0.2, 0.1, -0.1, 0.3, -0.3], // Input 4
-  [0.3, -0.3, 0.2, -0.2, 0.1], // Input 5
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+const createMatrix = (rows: number, cols: number, fill: () => number) =>
+  Array.from({ length: rows }, () => Array.from({ length: cols }, fill));
+
+const resizeVector = (prev: number[] | undefined, size: number, fallback: () => number) =>
+  Array.from({ length: size }, (_, index) => prev?.[index] ?? fallback());
+
+const resizeMatrix = (
+  prev: number[][] | undefined,
+  rows: number,
+  cols: number,
+  fallback: () => number
+) =>
+  Array.from({ length: rows }, (_, row) =>
+    Array.from({ length: cols }, (_, col) => prev?.[row]?.[col] ?? fallback())
+  );
+
+const buildLayerSizes = (inputCount: number, hiddenLayers: number[], outputCount: number) => [
+  inputCount,
+  ...hiddenLayers,
+  outputCount,
 ];
 
-const INITIAL_BIAS_H = [0.3, -0.2, 0.1, -0.1, 0.2];
+const ensureArchitecture = (
+  prev: NeuralNetworkState,
+  newInputCount: number,
+  newHiddenLayers: number[]
+): NeuralNetworkState => {
+  const inputCount = clamp(newInputCount, 1, 5);
+  const hiddenLayers = newHiddenLayers.map((count) => clamp(count, 1, 5));
+  const outputCount = prev.outputCount;
 
-const INITIAL_WEIGHTS_HO = [
-  [0.4], [-0.5], [0.3], [-0.2], [0.1] // Hidden 1..5 to Output
-];
+  const newInputs = resizeVector(prev.inputs, inputCount, () => 0.1);
+  const layerSizes = buildLayerSizes(inputCount, hiddenLayers, outputCount);
 
-const INITIAL_BIAS_O = [-0.1];
+  const weights = Array.from({ length: layerSizes.length - 1 }, (_, matrixIndex) => {
+    const from = layerSizes[matrixIndex];
+    const to = layerSizes[matrixIndex + 1];
+    return resizeMatrix(prev.weights[matrixIndex], from, to, randomWeight);
+  });
+
+  const biases = Array.from({ length: hiddenLayers.length + 1 }, (_, biasLayerIndex) => {
+    const size = biasLayerIndex < hiddenLayers.length ? hiddenLayers[biasLayerIndex] : outputCount;
+    return resizeVector(prev.biases[biasLayerIndex], size, randomWeight);
+  });
+
+  return {
+    ...prev,
+    inputCount,
+    hiddenLayers,
+    inputs: newInputs,
+    weights,
+    biases,
+    hiddenNetInputs: hiddenLayers.map((count) => Array(count).fill(0)),
+    hiddenActivations: hiddenLayers.map((count) => Array(count).fill(0)),
+    hiddenGradients: hiddenLayers.map((count) => Array(count).fill(0)),
+    outputNetInputs: Array(outputCount).fill(0),
+    outputActivations: Array(outputCount).fill(0),
+    outputGradients: Array(outputCount).fill(0),
+  };
+};
+
+const createInitialState = (): NeuralNetworkState => {
+  const inputCount = 2;
+  const hiddenLayers = [...DEFAULT_HIDDEN_LAYERS];
+  const outputCount = 1;
+  const layerSizes = buildLayerSizes(inputCount, hiddenLayers, outputCount);
+
+  const weights = Array.from({ length: layerSizes.length - 1 }, (_, matrixIndex) =>
+    createMatrix(layerSizes[matrixIndex], layerSizes[matrixIndex + 1], randomWeight)
+  );
+
+  const biases = Array.from({ length: hiddenLayers.length + 1 }, (_, index) => {
+    const size = index < hiddenLayers.length ? hiddenLayers[index] : outputCount;
+    return Array(size).fill(0).map(randomWeight);
+  });
+
+  return {
+    inputs: [...DEFAULT_INPUTS],
+    target: DEFAULT_TARGET,
+    learningRate: DEFAULT_LR,
+    inputCount,
+    hiddenLayers,
+    outputCount,
+    weights,
+    biases,
+    hiddenNetInputs: hiddenLayers.map((count) => Array(count).fill(0)),
+    hiddenActivations: hiddenLayers.map((count) => Array(count).fill(0)),
+    outputNetInputs: Array(outputCount).fill(0),
+    outputActivations: Array(outputCount).fill(0),
+    outputGradients: Array(outputCount).fill(0),
+    hiddenGradients: hiddenLayers.map((count) => Array(count).fill(0)),
+    epoch: 0,
+    totalError: 0,
+    rawError: 0,
+  };
+};
 
 export const useNeuralNetwork = () => {
   const [phase, setPhase] = useState<SimulationPhase>('IDLE');
   const [isPlaying, setIsPlaying] = useState(false);
+  const [autoPlayTargetEpoch, setAutoPlayTargetEpoch] = useState<number | null>(null);
   const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const [state, setState] = useState<NeuralNetworkState>({
-    inputs: [...DEFAULT_INPUTS],
-    target: DEFAULT_TARGET,
-    learningRate: DEFAULT_LR,
-    inputCount: 2,
-    hiddenCount: 2,
-    outputCount: 1,
-    weightsInputHidden: [
-      [INITIAL_WEIGHTS_IH[0][0], INITIAL_WEIGHTS_IH[0][1]],
-      [INITIAL_WEIGHTS_IH[1][0], INITIAL_WEIGHTS_IH[1][1]]
-    ],
-    biasHidden: [INITIAL_BIAS_H[0], INITIAL_BIAS_H[1]],
-    weightsHiddenOutput: [
-      [INITIAL_WEIGHTS_HO[0][0]],
-      [INITIAL_WEIGHTS_HO[1][0]]
-    ],
-    biasOutput: [INITIAL_BIAS_O[0]],
-    hiddenNetInputs: [0, 0],
-    hiddenActivations: [0, 0],
-    outputNetInputs: [0],
-    outputActivations: [0],
-    outputGradients: [0],
-    hiddenGradients: [0, 0],
-    epoch: 0,
-    totalError: 0,
-    rawError: 0,
-  });
+  const [state, setState] = useState<NeuralNetworkState>(createInitialState);
 
-  // Helper to resize arrays when architecture changes
-  const updateArchitecture = (newInputCount: number, newHiddenCount: number) => {
-    setState(prev => {
-      const newInputs = [...prev.inputs];
-      while (newInputs.length < newInputCount) newInputs.push(0.1);
-      while (newInputs.length > newInputCount) newInputs.pop();
-
-      // Resize Input->Hidden Weights
-      const newWeightsIH = Array(newInputCount).fill(0).map((_, i) => {
-        return Array(newHiddenCount).fill(0).map((_, h) => {
-          if (prev.weightsInputHidden[i] && prev.weightsInputHidden[i][h] !== undefined) {
-            return prev.weightsInputHidden[i][h];
-          }
-          // Use our preset constants if available for stability, else random
-          if (INITIAL_WEIGHTS_IH[i] && INITIAL_WEIGHTS_IH[i][h] !== undefined) {
-            return INITIAL_WEIGHTS_IH[i][h];
-          }
-          return randomWeight();
-        });
-      });
-
-      // Resize Hidden Biases
-      const newBiasH = Array(newHiddenCount).fill(0).map((_, h) => {
-        if (prev.biasHidden[h] !== undefined) return prev.biasHidden[h];
-        if (INITIAL_BIAS_H[h] !== undefined) return INITIAL_BIAS_H[h];
-        return randomWeight();
-      });
-
-      // Resize Hidden->Output Weights
-      const newWeightsHO = Array(newHiddenCount).fill(0).map((_, h) => {
-        return Array(prev.outputCount).fill(0).map((_, o) => {
-          if (prev.weightsHiddenOutput[h] && prev.weightsHiddenOutput[h][o] !== undefined) {
-            return prev.weightsHiddenOutput[h][o];
-          }
-           if (INITIAL_WEIGHTS_HO[h] && INITIAL_WEIGHTS_HO[h][o] !== undefined) {
-            return INITIAL_WEIGHTS_HO[h][o];
-          }
-          return randomWeight();
-        });
-      });
-
-      return {
-        ...prev,
-        inputCount: newInputCount,
-        hiddenCount: newHiddenCount,
-        inputs: newInputs,
-        weightsInputHidden: newWeightsIH,
-        biasHidden: newBiasH,
-        weightsHiddenOutput: newWeightsHO,
-        // Reset computed values to avoid index out of bounds before next forward pass
-        hiddenNetInputs: Array(newHiddenCount).fill(0),
-        hiddenActivations: Array(newHiddenCount).fill(0),
-        hiddenGradients: Array(newHiddenCount).fill(0),
-        phase: 'IDLE' // Reset phase on architecture change
-      };
-    });
+  const updateArchitecture = (newInputCount: number, newHiddenLayers: number[]) => {
+    setState((prev) => ensureArchitecture(prev, newInputCount, newHiddenLayers));
     setPhase('IDLE');
   };
 
   const stepForward = useCallback(() => {
-    setState(prev => {
-      // 1. Calculate Hidden Layer
-      const hiddenNetInputs = prev.biasHidden.map((b, hIdx) => {
-        let sum = b;
-        for (let i = 0; i < prev.inputCount; i++) {
-          sum += prev.inputs[i] * prev.weightsInputHidden[i][hIdx];
-        }
-        return sum;
-      });
-      const hiddenActivations = hiddenNetInputs.map(sigmoid);
+    setState((prev) => {
+      const hiddenNetInputs: number[][] = [];
+      const hiddenActivations: number[][] = [];
 
-      // 2. Calculate Output Layer
-      const outputNetInputs = prev.biasOutput.map((b, oIdx) => {
-        let sum = b;
-        for (let h = 0; h < prev.hiddenCount; h++) {
-          sum += hiddenActivations[h] * prev.weightsHiddenOutput[h][oIdx];
+      let prevActivations = [...prev.inputs];
+
+      for (let layerIndex = 0; layerIndex < prev.hiddenLayers.length; layerIndex++) {
+        const weights = prev.weights[layerIndex];
+        const biases = prev.biases[layerIndex];
+
+        const netInputs = biases.map((bias, neuronIndex) => {
+          let sum = bias;
+          for (let source = 0; source < prevActivations.length; source++) {
+            sum += prevActivations[source] * weights[source][neuronIndex];
+          }
+          return sum;
+        });
+
+        const activations = netInputs.map(sigmoid);
+        hiddenNetInputs.push(netInputs);
+        hiddenActivations.push(activations);
+        prevActivations = activations;
+      }
+
+      const outputMatrixIndex = prev.hiddenLayers.length;
+      const outputWeights = prev.weights[outputMatrixIndex];
+      const outputBiases = prev.biases[outputMatrixIndex];
+
+      const outputNetInputs = outputBiases.map((bias, outputIndex) => {
+        let sum = bias;
+        for (let source = 0; source < prevActivations.length; source++) {
+          sum += prevActivations[source] * outputWeights[source][outputIndex];
         }
         return sum;
       });
+
       const outputActivations = outputNetInputs.map(sigmoid);
 
       return {
@@ -145,106 +163,117 @@ export const useNeuralNetwork = () => {
         hiddenNetInputs,
         hiddenActivations,
         outputNetInputs,
-        outputActivations
+        outputActivations,
       };
     });
     setPhase('FORWARD');
   }, []);
 
   const stepError = useCallback(() => {
-    setState(prev => {
-      const output = prev.outputActivations[0];
+    setState((prev) => {
+      const output = prev.outputActivations[0] ?? 0;
       const err = mse(prev.target, output);
       const raw = prev.target - output;
       return {
         ...prev,
         totalError: err,
-        rawError: raw
+        rawError: raw,
       };
     });
     setPhase('ERROR');
   }, []);
 
   const stepBackward = useCallback(() => {
-    setState(prev => {
-      // Output Gradient (delta_o)
-      // dE/dOut = -(target - out)
-      // dOut/dNet = out * (1 - out)
-      // delta_o = dE/dNet = -(target - out) * out * (1 - out)
-      // Note: Some texts define error as (out - target), we used 0.5(target - out)^2
-      // Let's stick to: delta = (output - target) * sigmoid_derivative(output)
-      // If Loss = 0.5(target - output)^2 -> dE/dOut = -(target - output) = (output - target)
-      
-      const output = prev.outputActivations[0];
-      const deltaOutput = (output - prev.target) * sigmoidDerivativeFromActivation(output);
-      
-      // Hidden Gradient (delta_h)
-      // delta_h = (sum(delta_o * w_ho)) * sigmoid_derivative(hidden_out)
-      const hiddenGradients = prev.hiddenActivations.map((hVal, hIdx) => {
-        let sumWeightedDeltas = 0;
-        for (let o = 0; o < prev.outputCount; o++) {
-          // In this sim outputCount is 1, but keeping loop for generality
-          // We use the deltaOutput we just calculated (which is a single value array effectively)
-          sumWeightedDeltas += deltaOutput * prev.weightsHiddenOutput[hIdx][o];
-        }
-        return sumWeightedDeltas * sigmoidDerivativeFromActivation(hVal);
+    setState((prev) => {
+      const outputGradients = prev.outputActivations.map((output, outputIndex) => {
+        const target = outputIndex === 0 ? prev.target : 0;
+        return (output - target) * sigmoidDerivativeFromActivation(output);
       });
+
+      const hiddenGradients: number[][] = prev.hiddenLayers.map((count) => Array(count).fill(0));
+
+      for (let layerIndex = prev.hiddenLayers.length - 1; layerIndex >= 0; layerIndex--) {
+        const activations = prev.hiddenActivations[layerIndex];
+        const nextGradients =
+          layerIndex === prev.hiddenLayers.length - 1
+            ? outputGradients
+            : hiddenGradients[layerIndex + 1];
+        const nextWeights = prev.weights[layerIndex + 1];
+
+        for (let neuronIndex = 0; neuronIndex < activations.length; neuronIndex++) {
+          let weightedSum = 0;
+          for (let nextIndex = 0; nextIndex < nextGradients.length; nextIndex++) {
+            weightedSum += nextGradients[nextIndex] * nextWeights[neuronIndex][nextIndex];
+          }
+          hiddenGradients[layerIndex][neuronIndex] =
+            weightedSum * sigmoidDerivativeFromActivation(activations[neuronIndex]);
+        }
+      }
 
       return {
         ...prev,
-        outputGradients: [deltaOutput],
-        hiddenGradients
+        outputGradients,
+        hiddenGradients,
       };
     });
     setPhase('BACKWARD');
   }, []);
 
   const stepUpdate = useCallback(() => {
-    setState(prev => {
+    setState((prev) => {
       const lr = prev.learningRate;
-      
-      // Update Hidden->Output Weights
-      const newWeightsHO = prev.weightsHiddenOutput.map((row, hIdx) => {
-        return row.map((w, oIdx) => {
-          // dE/dw = delta_o * hidden_activation
-          const gradient = prev.outputGradients[oIdx] * prev.hiddenActivations[hIdx];
-          return w - lr * gradient;
-        });
-      });
+      const newWeights = prev.weights.map((matrix) => matrix.map((row) => [...row]));
+      const newBiases = prev.biases.map((row) => [...row]);
 
-      // Update Output Bias
-      const newBiasO = prev.biasOutput.map((b, oIdx) => {
-        return b - lr * prev.outputGradients[oIdx];
-      });
+      for (let matrixIndex = 0; matrixIndex < newWeights.length; matrixIndex++) {
+        const sourceActivations =
+          matrixIndex === 0 ? prev.inputs : prev.hiddenActivations[matrixIndex - 1];
+        const targetGradients =
+          matrixIndex === prev.hiddenLayers.length
+            ? prev.outputGradients
+            : prev.hiddenGradients[matrixIndex];
 
-      // Update Input->Hidden Weights
-      const newWeightsIH = prev.weightsInputHidden.map((row, iIdx) => {
-        return row.map((w, hIdx) => {
-          // dE/dw = delta_h * input_value
-          const gradient = prev.hiddenGradients[hIdx] * prev.inputs[iIdx];
-          return w - lr * gradient;
-        });
-      });
+        for (let sourceIndex = 0; sourceIndex < newWeights[matrixIndex].length; sourceIndex++) {
+          for (let targetIndex = 0; targetIndex < newWeights[matrixIndex][sourceIndex].length; targetIndex++) {
+            const gradient = sourceActivations[sourceIndex] * targetGradients[targetIndex];
+            newWeights[matrixIndex][sourceIndex][targetIndex] -= lr * gradient;
+          }
+        }
 
-      // Update Hidden Bias
-      const newBiasH = prev.biasHidden.map((b, hIdx) => {
-        return b - lr * prev.hiddenGradients[hIdx];
-      });
+        for (let targetIndex = 0; targetIndex < newBiases[matrixIndex].length; targetIndex++) {
+          newBiases[matrixIndex][targetIndex] -= lr * targetGradients[targetIndex];
+        }
+      }
 
       return {
         ...prev,
-        weightsHiddenOutput: newWeightsHO,
-        biasOutput: newBiasO,
-        weightsInputHidden: newWeightsIH,
-        biasHidden: newBiasH,
-        epoch: prev.epoch + 1
+        weights: newWeights,
+        biases: newBiases,
+        epoch: prev.epoch + 1,
       };
     });
     setPhase('UPDATE');
   }, []);
 
+  const stopAutoPlay = useCallback(() => {
+    setIsPlaying(false);
+    setAutoPlayTargetEpoch(null);
+  }, []);
+
+  const startAutoPlay = useCallback(
+    (epochs?: number) => {
+      if (epochs && epochs > 0) {
+        setAutoPlayTargetEpoch(state.epoch + epochs);
+      } else {
+        setAutoPlayTargetEpoch(null);
+      }
+      setIsPlaying(true);
+    },
+    [state.epoch]
+  );
+
   const nextStep = useCallback(() => {
-    setPhase(current => {
+    setPhase((current) => {
       switch (current) {
         case 'IDLE':
         case 'UPDATE':
@@ -266,24 +295,24 @@ export const useNeuralNetwork = () => {
   }, [stepForward, stepError, stepBackward, stepUpdate]);
 
   const reset = useCallback(() => {
-    setIsPlaying(false);
+    stopAutoPlay();
     setPhase('IDLE');
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       epoch: 0,
       totalError: 0,
       rawError: 0,
-      hiddenNetInputs: Array(prev.hiddenCount).fill(0),
-      hiddenActivations: Array(prev.hiddenCount).fill(0),
+      hiddenNetInputs: prev.hiddenLayers.map((count) => Array(count).fill(0)),
+      hiddenActivations: prev.hiddenLayers.map((count) => Array(count).fill(0)),
       outputNetInputs: Array(prev.outputCount).fill(0),
       outputActivations: Array(prev.outputCount).fill(0),
       outputGradients: Array(prev.outputCount).fill(0),
-      hiddenGradients: Array(prev.hiddenCount).fill(0),
+      hiddenGradients: prev.hiddenLayers.map((count) => Array(count).fill(0)),
     }));
-  }, []);
+  }, [stopAutoPlay]);
 
   const setInput = (index: number, val: number) => {
-    setState(prev => {
+    setState((prev) => {
       const newInputs = [...prev.inputs];
       newInputs[index] = val;
       return { ...prev, inputs: newInputs };
@@ -291,60 +320,64 @@ export const useNeuralNetwork = () => {
   };
 
   const setTarget = (val: number) => {
-    setState(prev => ({ ...prev, target: val }));
+    setState((prev) => ({ ...prev, target: val }));
   };
 
   const setLearningRate = (val: number) => {
-    setState(prev => ({ ...prev, learningRate: val }));
+    setState((prev) => ({ ...prev, learningRate: val }));
   };
 
-  const updateWeight = (layer: 'input' | 'hidden', i: number, j: number, val: number) => {
-    setState(prev => {
-      if (layer === 'input') {
-        const newW = prev.weightsInputHidden.map(row => [...row]);
-        newW[i][j] = val;
-        return { ...prev, weightsInputHidden: newW };
-      } else {
-        const newW = prev.weightsHiddenOutput.map(row => [...row]);
-        newW[i][j] = val;
-        return { ...prev, weightsHiddenOutput: newW };
+  const updateWeight = (matrixIndex: number, sourceIndex: number, targetIndex: number, value: number) => {
+    setState((prev) => {
+      const weights = prev.weights.map((matrix) => matrix.map((row) => [...row]));
+      if (weights[matrixIndex]?.[sourceIndex]?.[targetIndex] === undefined) {
+        return prev;
       }
+      weights[matrixIndex][sourceIndex][targetIndex] = value;
+      return { ...prev, weights };
     });
   };
 
-  const updateBias = (layer: 'hidden' | 'output', index: number, val: number) => {
-    setState(prev => {
-       if (layer === 'hidden') {
-         const newB = [...prev.biasHidden];
-         newB[index] = val;
-         return { ...prev, biasHidden: newB };
-       } else {
-         const newB = [...prev.biasOutput];
-         newB[index] = val;
-         return { ...prev, biasOutput: newB };
-       }
+  const updateBias = (biasLayerIndex: number, index: number, value: number) => {
+    setState((prev) => {
+      const biases = prev.biases.map((row) => [...row]);
+      if (biases[biasLayerIndex]?.[index] === undefined) {
+        return prev;
+      }
+      biases[biasLayerIndex][index] = value;
+      return { ...prev, biases };
     });
   };
 
-  // Auto Play Logic
   useEffect(() => {
     if (isPlaying) {
       playIntervalRef.current = setInterval(() => {
         nextStep();
-      }, 1000); // 1 second per step
-    } else {
-      if (playIntervalRef.current) clearInterval(playIntervalRef.current);
+      }, 1000);
+    } else if (playIntervalRef.current) {
+      clearInterval(playIntervalRef.current);
     }
+
     return () => {
-      if (playIntervalRef.current) clearInterval(playIntervalRef.current);
+      if (playIntervalRef.current) {
+        clearInterval(playIntervalRef.current);
+      }
     };
   }, [isPlaying, nextStep]);
+
+  useEffect(() => {
+    if (isPlaying && autoPlayTargetEpoch !== null && state.epoch >= autoPlayTargetEpoch) {
+      stopAutoPlay();
+    }
+  }, [autoPlayTargetEpoch, isPlaying, state.epoch, stopAutoPlay]);
 
   return {
     state,
     phase,
     isPlaying,
     setIsPlaying,
+    startAutoPlay,
+    stopAutoPlay,
     nextStep,
     reset,
     updateArchitecture,
@@ -352,6 +385,6 @@ export const useNeuralNetwork = () => {
     setTarget,
     setLearningRate,
     updateWeight,
-    updateBias
+    updateBias,
   };
 };

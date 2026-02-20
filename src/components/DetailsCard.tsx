@@ -15,7 +15,9 @@ export const DetailsCard: React.FC<DetailsCardProps> = ({ details, onClose }) =>
     <div className="absolute top-4 left-4 z-20 w-64 bg-slate-900/95 backdrop-blur border border-slate-700 rounded-xl shadow-2xl p-4 text-slate-200">
       <div className="flex justify-between items-center mb-3">
         <h3 className="font-bold text-indigo-400 uppercase text-xs tracking-wider">
-          {details.layer} Neuron #{details.index + 1}
+          {details.layer === 'hidden' && details.hiddenLayerIndex !== undefined
+            ? `hidden ${details.hiddenLayerIndex + 1} Neuron #${details.index + 1}`
+            : `${details.layer} Neuron #${details.index + 1}`}
         </h3>
         <button onClick={onClose} className="text-slate-500 hover:text-slate-300">
           <X className="w-4 h-4" />

@@ -13,6 +13,28 @@ export default function App() {
   const [selectedNeuron, setSelectedNeuron] = useState<NeuronDetails | null>(null);
   const [selectedWeight, setSelectedWeight] = useState<WeightDetails | null>(null);
 
+  const handlePlayPause = () => {
+    if (nn.isPlaying) {
+      nn.stopAutoPlay();
+      return;
+    }
+
+    const input = window.prompt('Enter number of epochs to auto-run (0 or blank for infinite):', '0');
+    if (input === null) return; // user canceled
+
+    const epochs = Number(input);
+    if (Number.isNaN(epochs) || epochs < 0) {
+      window.alert('Please enter a non-negative number.');
+      return;
+    }
+
+    if (epochs > 0) {
+      nn.startAutoPlay(epochs);
+    } else {
+      nn.startAutoPlay();
+    }
+  };
+
   const handleNeuronClick = (details: NeuronDetails) => {
     setSelectedNeuron(details);
     setSelectedWeight(null); // Close weight popover if open
@@ -26,7 +48,7 @@ export default function App() {
   const handleWeightSave = (val: number) => {
     if (selectedWeight) {
       nn.updateWeight(
-        selectedWeight.sourceLayer,
+        selectedWeight.matrixIndex,
         selectedWeight.sourceIndex,
         selectedWeight.targetIndex,
         val
@@ -41,7 +63,7 @@ export default function App() {
         state={nn.state}
         phase={nn.phase}
         isPlaying={nn.isPlaying}
-        onPlayPause={() => nn.setIsPlaying(!nn.isPlaying)}
+        onPlayPause={handlePlayPause}
         onNext={nn.nextStep}
         onReset={nn.reset}
         onUpdateArchitecture={nn.updateArchitecture}

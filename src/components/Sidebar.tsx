@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Pause, SkipForward, RotateCcw, Settings, Activity, ChevronRight, ChevronDown } from 'lucide-react';
+import { Play, Pause, SkipForward, RotateCcw, Settings, Activity, ChevronRight } from 'lucide-react';
 import { NeuralNetworkState, SimulationPhase } from '../types';
 
 interface SidebarProps {
@@ -9,12 +9,12 @@ interface SidebarProps {
   onPlayPause: () => void;
   onNext: () => void;
   onReset: () => void;
-  onUpdateArchitecture: (inputs: number, hidden: number) => void;
+  onUpdateArchitecture: (inputs: number, hiddenLayers: number[]) => void;
   onSetInput: (idx: number, val: number) => void;
   onSetTarget: (val: number) => void;
   onSetLR: (val: number) => void;
-  onUpdateWeight: (layer: 'input' | 'hidden', i: number, j: number, val: number) => void;
-  onUpdateBias: (layer: 'hidden' | 'output', index: number, val: number) => void;
+  onUpdateWeight: (matrixIndex: number, i: number, j: number, val: number) => void;
+  onUpdateBias: (biasLayerIndex: number, index: number, val: number) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -31,6 +31,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onUpdateWeight,
   onUpdateBias
 }) => {
+  const layerCount = state.hiddenLayers.length;
+
+  const updateLayerCount = (nextCount: number) => {
+    const clamped = Math.max(1, Math.min(4, nextCount));
+    const nextLayers = [...state.hiddenLayers];
+
+    while (nextLayers.length < clamped) {
+      nextLayers.push(2);
+    }
+    while (nextLayers.length > clamped) {
+      nextLayers.pop();
+    }
+
+    onUpdateArchitecture(state.inputCount, nextLayers);
+  };
+
+  const updateHiddenLayerSize = (layerIndex: number, neuronCount: number) => {
+    const nextLayers = [...state.hiddenLayers];
+    nextLayers[layerIndex] = neuronCount;
+    onUpdateArchitecture(state.inputCount, nextLayers);
+  };
+
+  const getLayerName = (layerIndex: number) => {
+    if (layerIndex === 0) return 'Input';
+    if (layerIndex === state.hiddenLayers.length + 1) return 'Output';
+    return `Hidden ${layerIndex}`;
+  };
+
   return (
     <div className="w-80 h-full bg-slate-900/90 backdrop-blur-md border-r border-slate-700 flex flex-col text-slate-100 overflow-y-auto custom-scrollbar">
       <div className="p-6 border-b border-slate-700 shrink-0">
@@ -65,7 +93,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }`}
           >
             {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            {isPlaying ? 'Pause' : 'Auto Play'}
+            {isPlaying ? 'Stop Auto' : 'Auto Play'}
           </button>
           <button
             onClick={onNext}
@@ -104,24 +132,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 min="1"
                 max="5"
                 value={state.inputCount}
-                onChange={(e) => onUpdateArchitecture(Number(e.target.value), state.hiddenCount)}
+                onChange={(e) => onUpdateArchitecture(Number(e.target.value), state.hiddenLayers)}
                 className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
               />
             </div>
             <div>
               <div className="flex justify-between text-xs mb-1 text-slate-400">
-                <span>Hidden Neurons</span>
-                <span>{state.hiddenCount}</span>
+                <span>Hidden Layers</span>
+                <span>{layerCount}</span>
               </div>
               <input
                 type="range"
                 min="1"
-                max="5"
-                value={state.hiddenCount}
-                onChange={(e) => onUpdateArchitecture(state.inputCount, Number(e.target.value))}
+                max="4"
+                value={layerCount}
+                onChange={(e) => updateLayerCount(Number(e.target.value))}
                 className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
               />
             </div>
+            {state.hiddenLayers.map((count, layerIndex) => (
+              <div key={`hidden-size-${layerIndex}`}>
+                <div className="flex justify-between text-xs mb-1 text-slate-400">
+                  <span>Hidden {layerIndex + 1} Neurons</span>
+                  <span>{count}</span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  value={count}
+                  onChange={(e) => updateHiddenLayerSize(layerIndex, Number(e.target.value))}
+                  className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                />
+              </div>
+            ))}
           </div>
         </div>
 
@@ -190,122 +234,89 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="p-6 border-t border-slate-700 space-y-4">
         <div className="text-sm font-medium text-slate-300">Weights & Biases</div>
 
-        {/* Input -> Hidden */}
-        <details className="group">
-          <summary className="flex items-center gap-2 text-xs font-medium text-slate-400 cursor-pointer hover:text-slate-200 mb-2 list-none">
-            <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
-            Input → Hidden Weights
-          </summary>
-          <div className="space-y-3 pl-2 border-l border-slate-700 py-2">
-            {state.weightsInputHidden.map((row, i) => 
-              row.map((w, h) => {
-                if (i >= state.inputCount || h >= state.hiddenCount) return null;
-                return (
-                  <div key={`ih-${i}-${h}`}>
-                    <div className="flex justify-between text-[10px] mb-1 text-slate-500">
-                      <span>w_i{i+1}_h{h+1}</span>
-                      <span>{w.toFixed(2)}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="-2"
-                      max="2"
-                      step="0.05"
-                      value={w}
-                      onChange={(e) => onUpdateWeight('input', i, h, Number(e.target.value))}
-                      className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                    />
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </details>
+        {state.weights.map((matrix, matrixIndex) => {
+          const sourceName = getLayerName(matrixIndex);
+          const targetName = getLayerName(matrixIndex + 1);
 
-        {/* Hidden Biases */}
-        <details className="group">
-          <summary className="flex items-center gap-2 text-xs font-medium text-slate-400 cursor-pointer hover:text-slate-200 mb-2 list-none">
-            <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
-            Hidden Biases
-          </summary>
-          <div className="space-y-3 pl-2 border-l border-slate-700 py-2">
-            {state.biasHidden.map((b, h) => {
-              if (h >= state.hiddenCount) return null;
-              return (
-                <div key={`bh-${h}`}>
+          return (
+            <details className="group" key={`weights-${matrixIndex}`}>
+              <summary className="flex items-center gap-2 text-xs font-medium text-slate-400 cursor-pointer hover:text-slate-200 mb-2 list-none">
+                <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
+                {sourceName} → {targetName} Weights
+              </summary>
+              <div className="space-y-3 pl-2 border-l border-slate-700 py-2">
+                {matrix.map((row, sourceIndex) =>
+                  row.map((weight, targetIndex) => (
+                    <div key={`w-${matrixIndex}-${sourceIndex}-${targetIndex}`}>
+                      <div className="flex justify-between text-[10px] mb-1 text-slate-500">
+                        <span>w_l{matrixIndex + 1}_{sourceIndex + 1}-{targetIndex + 1}</span>
+                        <span>{weight.toFixed(2)}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="-2"
+                        max="2"
+                        step="0.05"
+                        value={weight}
+                        onChange={(e) => onUpdateWeight(matrixIndex, sourceIndex, targetIndex, Number(e.target.value))}
+                        className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                      />
+                    </div>
+                  ))
+                )}
+              </div>
+            </details>
+          );
+        })}
+
+        {state.hiddenLayers.map((_, hiddenLayerIndex) => (
+          <details className="group" key={`hidden-bias-${hiddenLayerIndex}`}>
+            <summary className="flex items-center gap-2 text-xs font-medium text-slate-400 cursor-pointer hover:text-slate-200 mb-2 list-none">
+              <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
+              Hidden {hiddenLayerIndex + 1} Biases
+            </summary>
+            <div className="space-y-3 pl-2 border-l border-slate-700 py-2">
+              {state.biases[hiddenLayerIndex].map((bias, neuronIndex) => (
+                <div key={`bh-${hiddenLayerIndex}-${neuronIndex}`}>
                   <div className="flex justify-between text-[10px] mb-1 text-slate-500">
-                    <span>b_h{h+1}</span>
-                    <span>{b.toFixed(2)}</span>
+                    <span>b_h{hiddenLayerIndex + 1}_{neuronIndex + 1}</span>
+                    <span>{bias.toFixed(2)}</span>
                   </div>
                   <input
                     type="range"
                     min="-2"
                     max="2"
                     step="0.05"
-                    value={b}
-                    onChange={(e) => onUpdateBias('hidden', h, Number(e.target.value))}
+                    value={bias}
+                    onChange={(e) => onUpdateBias(hiddenLayerIndex, neuronIndex, Number(e.target.value))}
                     className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                   />
                 </div>
-              );
-            })}
-          </div>
-        </details>
+              ))}
+            </div>
+          </details>
+        ))}
 
-        {/* Hidden -> Output */}
-        <details className="group">
-          <summary className="flex items-center gap-2 text-xs font-medium text-slate-400 cursor-pointer hover:text-slate-200 mb-2 list-none">
-            <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
-            Hidden → Output Weights
-          </summary>
-          <div className="space-y-3 pl-2 border-l border-slate-700 py-2">
-            {state.weightsHiddenOutput.map((row, h) => 
-              row.map((w, o) => {
-                if (h >= state.hiddenCount || o >= state.outputCount) return null;
-                return (
-                  <div key={`ho-${h}-${o}`}>
-                    <div className="flex justify-between text-[10px] mb-1 text-slate-500">
-                      <span>w_h{h+1}_o{o+1}</span>
-                      <span>{w.toFixed(2)}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="-2"
-                      max="2"
-                      step="0.05"
-                      value={w}
-                      onChange={(e) => onUpdateWeight('hidden', h, o, Number(e.target.value))}
-                      className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                    />
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </details>
-
-        {/* Output Biases */}
         <details className="group">
           <summary className="flex items-center gap-2 text-xs font-medium text-slate-400 cursor-pointer hover:text-slate-200 mb-2 list-none">
             <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
             Output Biases
           </summary>
           <div className="space-y-3 pl-2 border-l border-slate-700 py-2">
-            {state.biasOutput.map((b, o) => {
-              if (o >= state.outputCount) return null;
+            {state.biases[state.hiddenLayers.length].map((bias, outputIndex) => {
               return (
-                <div key={`bo-${o}`}>
+                <div key={`bo-${outputIndex}`}>
                   <div className="flex justify-between text-[10px] mb-1 text-slate-500">
-                    <span>b_o{o+1}</span>
-                    <span>{b.toFixed(2)}</span>
+                    <span>b_o{outputIndex + 1}</span>
+                    <span>{bias.toFixed(2)}</span>
                   </div>
                   <input
                     type="range"
                     min="-2"
                     max="2"
                     step="0.05"
-                    value={b}
-                    onChange={(e) => onUpdateBias('output', o, Number(e.target.value))}
+                    value={bias}
+                    onChange={(e) => onUpdateBias(state.hiddenLayers.length, outputIndex, Number(e.target.value))}
                     className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                   />
                 </div>

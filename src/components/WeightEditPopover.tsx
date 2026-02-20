@@ -30,9 +30,9 @@ export const WeightEditPopover: React.FC<WeightEditPopoverProps> = ({ details, o
 
       <div className="mb-4 text-center">
         <div className="text-xs text-slate-500 mb-1">
-          {details.sourceLayer === 'input' ? 'Input' : 'Hidden'} #{details.sourceIndex + 1}
+          {(details.sourceLabel ?? (details.sourceLayer === 'input' ? 'Input' : 'Hidden'))} #{details.sourceIndex + 1}
           {' → '}
-          {details.targetLayer === 'hidden' ? 'Hidden' : 'Output'} #{details.targetIndex + 1}
+          {(details.targetLabel ?? (details.targetLayer === 'hidden' ? 'Hidden' : 'Output'))} #{details.targetIndex + 1}
         </div>
         <div className="text-2xl font-mono font-bold text-white">
           {value.toFixed(3)}

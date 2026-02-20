@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { NeuralNetworkState, SimulationPhase, NeuronDetails, WeightDetails } from '../types';
 import { NeuronNode } from './NeuronNode';
 import { ConnectionLine } from './ConnectionLine';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, ZoomIn, ZoomOut } from 'lucide-react';
 
 interface NetworkCanvasProps {
   state: NeuralNetworkState;
@@ -15,18 +15,22 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
   state,
   phase,
   onNeuronClick,
-  onWeightClick
+  onWeightClick,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [showValues, setShowValues] = useState(false);
+  const [scale, setScale] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const lastMousePos = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     const updateSize = () => {
       if (containerRef.current) {
         setDimensions({
           width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight
+          height: containerRef.current.clientHeight,
         });
       }
     };
@@ -35,174 +39,225 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  // Layout Calculations
-  const layerX = {
-    input: dimensions.width * 0.2,
-    hidden: dimensions.width * 0.5,
-    output: dimensions.width * 0.8
+  const layerCounts = [state.inputCount, ...state.hiddenLayers, state.outputCount];
+
+  const getLayerX = (layerIndex: number) => {
+    const totalLayers = layerCounts.length;
+    return (dimensions.width * (layerIndex + 1)) / (totalLayers + 1);
   };
 
   const getNeuronY = (index: number, total: number) => {
-    const spacing = Math.min(100, dimensions.height / (total + 1));
+    const spacing = Math.min(120, dimensions.height / (total + 1));
     const startY = (dimensions.height - (total - 1) * spacing) / 2;
     return startY + index * spacing;
   };
 
+  const getLayerName = (layerIndex: number) => {
+    if (layerIndex === 0) return 'input';
+    if (layerIndex === layerCounts.length - 1) return 'output';
+    return 'hidden';
+  };
+
+  const adjustZoom = (delta: number) => {
+    setScale((prev) => Math.max(0.7, Math.min(1.8, prev + delta)));
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only start dragging if clicking on the background (svg)
+    if ((e.target as Element).closest('circle') || (e.target as Element).closest('line')) {
+      return;
+    }
+    setIsDragging(true);
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    
+    const dx = e.clientX - lastMousePos.current.x;
+    const dy = e.clientY - lastMousePos.current.y;
+    
+    setPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
   return (
-    <div ref={containerRef} className="w-full h-full relative bg-slate-950 overflow-hidden">
-      {/* Grid Background */}
-      <div className="absolute inset-0 opacity-10 pointer-events-none" 
-           style={{ 
-             backgroundImage: 'radial-gradient(#4f46e5 1px, transparent 1px)', 
-             backgroundSize: '20px 20px' 
-           }} 
+    <div 
+      ref={containerRef} 
+      className={`w-full h-full relative bg-slate-950 overflow-hidden ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
+      <div
+        className="absolute inset-0 opacity-10 pointer-events-none"
+        style={{
+          backgroundImage: 'radial-gradient(#4f46e5 1px, transparent 1px)',
+          backgroundSize: '20px 20px',
+        }}
       />
 
-      {/* Toggle Values Button */}
-      <button
-        onClick={() => setShowValues(!showValues)}
-        className="absolute top-4 right-4 z-10 p-2 bg-slate-800/50 hover:bg-slate-700/50 backdrop-blur rounded-full text-slate-300 transition-colors"
-        title={showValues ? "Hide Values" : "Show Values"}
-      >
-        {showValues ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-      </button>
+      <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+        {/* Buttons previously here, now moved to bottom left but we keep structure if needed or just SVG next */}
+      </div>
 
-      <svg width="100%" height="100%" className="absolute inset-0">
-        <defs>
-          <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
-            <path d="M0,0 L0,6 L9,3 z" fill="#64748b" />
-          </marker>
-        </defs>
+      <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2">
+        <button
+          onClick={() => adjustZoom(-0.1)}
+          className="p-2 bg-slate-800/60 hover:bg-slate-700/60 backdrop-blur rounded-full text-slate-300 transition-colors"
+          title="Zoom Out"
+        >
+          <ZoomOut className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => adjustZoom(0.1)}
+          className="p-2 bg-slate-800/60 hover:bg-slate-700/60 backdrop-blur rounded-full text-slate-300 transition-colors"
+          title="Zoom In"
+        >
+          <ZoomIn className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => setShowValues(!showValues)}
+          className="p-2 bg-slate-800/50 hover:bg-slate-700/50 backdrop-blur rounded-full text-slate-300 transition-colors"
+          title={showValues ? 'Hide Values' : 'Show Values'}
+        >
+          {showValues ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      </div>
 
-        {/* Input -> Hidden Connections */}
-        {state.weightsInputHidden.map((row, i) => 
-          row.map((weight, h) => {
-            // Only render if indices are valid
-            if (i >= state.inputCount || h >= state.hiddenCount) return null;
-            
-            const x1 = layerX.input;
-            const y1 = getNeuronY(i, state.inputCount);
-            const x2 = layerX.hidden;
-            const y2 = getNeuronY(h, state.hiddenCount);
-            
-            return (
-              <ConnectionLine
-                key={`ih-${i}-${h}`}
-                x1={x1} y1={y1} x2={x2} y2={y2}
-                weight={weight}
+      <svg width="100%" height="100%" className="absolute inset-0 pointer-events-none">
+        <g
+          transform={`translate(${dimensions.width / 2 + pan.x} ${dimensions.height / 2 + pan.y}) scale(${scale}) translate(${-dimensions.width / 2} ${-dimensions.height / 2})`}
+          className="pointer-events-auto"
+        >
+          {state.weights.map((matrix, matrixIndex) => {
+            const sourceLayerIndex = matrixIndex;
+            const targetLayerIndex = matrixIndex + 1;
+            const sourceX = getLayerX(sourceLayerIndex);
+            const targetX = getLayerX(targetLayerIndex);
+            const sourceCount = layerCounts[sourceLayerIndex];
+            const targetCount = layerCounts[targetLayerIndex];
+
+            return matrix.map((row, sourceIndex) =>
+              row.map((weight, targetIndex) => (
+                <ConnectionLine
+                  key={`m-${matrixIndex}-${sourceIndex}-${targetIndex}`}
+                  x1={sourceX}
+                  y1={getNeuronY(sourceIndex, sourceCount)}
+                  x2={targetX}
+                  y2={getNeuronY(targetIndex, targetCount)}
+                  weight={weight}
+                  phase={phase}
+                  showValues={showValues}
+                  onClick={() =>
+                    onWeightClick({
+                      id: `m-${matrixIndex}-${sourceIndex}-${targetIndex}`,
+                      matrixIndex,
+                      sourceLayer: getLayerName(sourceLayerIndex) as 'input' | 'hidden',
+                      targetLayer: getLayerName(targetLayerIndex) as 'hidden' | 'output',
+                      sourceLayerIndex: sourceLayerIndex === 0 ? undefined : sourceLayerIndex - 1,
+                      targetLayerIndex:
+                        targetLayerIndex === layerCounts.length - 1 ? undefined : targetLayerIndex - 1,
+                      sourceLabel:
+                        sourceLayerIndex === 0
+                          ? 'Input'
+                          : sourceLayerIndex === layerCounts.length - 1
+                            ? 'Output'
+                            : `Hidden ${sourceLayerIndex}`,
+                      targetLabel:
+                        targetLayerIndex === layerCounts.length - 1
+                          ? 'Output'
+                          : `Hidden ${targetLayerIndex}`,
+                      sourceIndex,
+                      targetIndex,
+                      value: weight,
+                    })
+                  }
+                />
+              ))
+            );
+          })}
+
+          {Array.from({ length: state.inputCount }).map((_, inputIndex) => (
+            <NeuronNode
+              key={`input-${inputIndex}`}
+              cx={getLayerX(0)}
+              cy={getNeuronY(inputIndex, state.inputCount)}
+              r={28}
+              value={state.inputs[inputIndex]}
+              label={`x${inputIndex + 1}`}
+              isInput
+              phase={phase}
+              showValues={showValues}
+              onClick={() =>
+                onNeuronClick({
+                  id: `input-${inputIndex}`,
+                  layer: 'input',
+                  index: inputIndex,
+                  value: state.inputs[inputIndex],
+                })
+              }
+            />
+          ))}
+
+          {state.hiddenLayers.map((hiddenCount, hiddenLayerIndex) =>
+            Array.from({ length: hiddenCount }).map((_, hiddenIndex) => (
+              <NeuronNode
+                key={`hidden-${hiddenLayerIndex}-${hiddenIndex}`}
+                cx={getLayerX(hiddenLayerIndex + 1)}
+                cy={getNeuronY(hiddenIndex, hiddenCount)}
+                r={28}
+                value={state.hiddenActivations[hiddenLayerIndex]?.[hiddenIndex] ?? 0}
+                label={`h${hiddenLayerIndex + 1}.${hiddenIndex + 1}`}
                 phase={phase}
                 showValues={showValues}
-                onClick={() => onWeightClick({
-                  id: `ih-${i}-${h}`,
-                  sourceLayer: 'input',
-                  targetLayer: 'hidden',
-                  sourceIndex: i,
-                  targetIndex: h,
-                  value: weight
-                })}
+                gradient={state.hiddenGradients[hiddenLayerIndex]?.[hiddenIndex]}
+                onClick={() =>
+                  onNeuronClick({
+                    id: `hidden-${hiddenLayerIndex}-${hiddenIndex}`,
+                    layer: 'hidden',
+                    hiddenLayerIndex,
+                    index: hiddenIndex,
+                    value: state.hiddenActivations[hiddenLayerIndex]?.[hiddenIndex] ?? 0,
+                    netInput: state.hiddenNetInputs[hiddenLayerIndex]?.[hiddenIndex],
+                    gradient: state.hiddenGradients[hiddenLayerIndex]?.[hiddenIndex],
+                    bias: state.biases[hiddenLayerIndex]?.[hiddenIndex],
+                  })
+                }
               />
-            );
-          })
-        )}
+            ))
+          )}
 
-        {/* Hidden -> Output Connections */}
-        {state.weightsHiddenOutput.map((row, h) => 
-          row.map((weight, o) => {
-            if (h >= state.hiddenCount || o >= state.outputCount) return null;
-
-            const x1 = layerX.hidden;
-            const y1 = getNeuronY(h, state.hiddenCount);
-            const x2 = layerX.output;
-            const y2 = getNeuronY(o, state.outputCount);
-
-            return (
-              <ConnectionLine
-                key={`ho-${h}-${o}`}
-                x1={x1} y1={y1} x2={x2} y2={y2}
-                weight={weight}
-                phase={phase}
-                showValues={showValues}
-                onClick={() => onWeightClick({
-                  id: `ho-${h}-${o}`,
-                  sourceLayer: 'hidden',
-                  targetLayer: 'output',
-                  sourceIndex: h,
-                  targetIndex: o,
-                  value: weight
-                })}
-              />
-            );
-          })
-        )}
-
-        {/* Input Neurons */}
-        {Array.from({ length: state.inputCount }).map((_, i) => (
-          <NeuronNode
-            key={`input-${i}`}
-            cx={layerX.input}
-            cy={getNeuronY(i, state.inputCount)}
-            r={20}
-            value={state.inputs[i]}
-            label={`x${i+1}`}
-            isInput
-            phase={phase}
-            showValues={showValues}
-            onClick={() => onNeuronClick({
-              id: `input-${i}`,
-              layer: 'input',
-              index: i,
-              value: state.inputs[i]
-            })}
-          />
-        ))}
-
-        {/* Hidden Neurons */}
-        {Array.from({ length: state.hiddenCount }).map((_, h) => (
-          <NeuronNode
-            key={`hidden-${h}`}
-            cx={layerX.hidden}
-            cy={getNeuronY(h, state.hiddenCount)}
-            r={20}
-            value={state.hiddenActivations[h]}
-            label={`h${h+1}`}
-            phase={phase}
-            showValues={showValues}
-            gradient={state.hiddenGradients[h]}
-            onClick={() => onNeuronClick({
-              id: `hidden-${h}`,
-              layer: 'hidden',
-              index: h,
-              value: state.hiddenActivations[h],
-              netInput: state.hiddenNetInputs[h],
-              gradient: state.hiddenGradients[h],
-              bias: state.biasHidden[h]
-            })}
-          />
-        ))}
-
-        {/* Output Neurons */}
-        {Array.from({ length: state.outputCount }).map((_, o) => (
-          <NeuronNode
-            key={`output-${o}`}
-            cx={layerX.output}
-            cy={getNeuronY(o, state.outputCount)}
-            r={24}
-            value={state.outputActivations[o]}
-            label={`y${o+1}`}
-            phase={phase}
-            showValues={showValues}
-            gradient={state.outputGradients[o]}
-            onClick={() => onNeuronClick({
-              id: `output-${o}`,
-              layer: 'output',
-              index: o,
-              value: state.outputActivations[o],
-              netInput: state.outputNetInputs[o],
-              gradient: state.outputGradients[o],
-              bias: state.biasOutput[o]
-            })}
-          />
-        ))}
+          {Array.from({ length: state.outputCount }).map((_, outputIndex) => (
+            <NeuronNode
+              key={`output-${outputIndex}`}
+              cx={getLayerX(layerCounts.length - 1)}
+              cy={getNeuronY(outputIndex, state.outputCount)}
+              r={32}
+              value={state.outputActivations[outputIndex]}
+              label={`y${outputIndex + 1}`}
+              phase={phase}
+              showValues={showValues}
+              gradient={state.outputGradients[outputIndex]}
+              onClick={() =>
+                onNeuronClick({
+                  id: `output-${outputIndex}`,
+                  layer: 'output',
+                  index: outputIndex,
+                  value: state.outputActivations[outputIndex],
+                  netInput: state.outputNetInputs[outputIndex],
+                  gradient: state.outputGradients[outputIndex],
+                  bias: state.biases[state.hiddenLayers.length]?.[outputIndex],
+                })
+              }
+            />
+          ))}
+        </g>
       </svg>
     </div>
   );
