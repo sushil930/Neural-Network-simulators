@@ -38,7 +38,18 @@ export const NeuronNode: React.FC<NeuronNodeProps> = ({
   // but add a glow if there's a high gradient in backward phase.
   
   const isBackprop = phase === 'BACKWARD' || phase === 'UPDATE';
-  const gradientIntensity = gradient ? Math.min(1, Math.abs(gradient) * 5) : 0; // Scale up for visibility
+  const isForward = phase === 'FORWARD';
+  const isError = phase === 'ERROR';
+  const gradientIntensity = gradient ? Math.min(1, Math.abs(gradient) * 5) : 0;
+
+  // Phase-based ring color
+  const phaseRingColor = isForward
+    ? '#60a5fa' // blue
+    : isError
+      ? '#ef4444' // red
+      : isBackprop
+        ? '#a855f7' // purple
+        : 'transparent';
 
   return (
     <motion.g
@@ -51,6 +62,32 @@ export const NeuronNode: React.FC<NeuronNodeProps> = ({
       animate={{ scale: 1 }}
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
     >
+      {/* Phase Pulse Ring */}
+      {(isForward || isError || isBackprop) && (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={r + 3}
+          fill="none"
+          stroke={phaseRingColor}
+          strokeWidth="2"
+          opacity="0"
+        >
+          <animate
+            attributeName="opacity"
+            values="0;0.7;0"
+            dur="1s"
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="r"
+            values={`${r + 2};${r + 8};${r + 2}`}
+            dur="1s"
+            repeatCount="indefinite"
+          />
+        </circle>
+      )}
+
       {/* Selection Halo */}
       {isSelected && (
         <circle

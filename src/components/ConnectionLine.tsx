@@ -10,7 +10,8 @@ interface ConnectionLineProps {
   phase: string;
   onClick: () => void;
   showValues: boolean;
-  gradient?: number; // Gradient flowing through this connection
+  gradient?: number;
+  epoch?: number;
 }
 
 export const ConnectionLine: React.FC<ConnectionLineProps> = ({
@@ -22,7 +23,8 @@ export const ConnectionLine: React.FC<ConnectionLineProps> = ({
   phase,
   onClick,
   showValues,
-  gradient
+  gradient,
+  epoch = 0,
 }) => {
   // Visual properties
   const strokeWidth = Math.max(1, Math.min(8, Math.abs(weight) * 3));
@@ -60,42 +62,67 @@ export const ConnectionLine: React.FC<ConnectionLineProps> = ({
         className="transition-all duration-300 group-hover:opacity-100"
       />
 
-      {/* Flow Particles */}
+      {/* Flow Particles - Forward */}
       {isForward && (
-        <circle r="3" fill="#fff">
-          <animateMotion
-            dur="1s"
-            repeatCount="indefinite"
-            path={`M${x1},${y1} L${x2},${y2}`}
-          />
-        </circle>
+        <g key={`fwd-${epoch}-${phase}`}>
+          <circle r="4" fill="#60a5fa" opacity="0.9">
+            <animateMotion
+              dur="0.8s"
+              repeatCount="indefinite"
+              path={`M${x1},${y1} L${x2},${y2}`}
+            />
+          </circle>
+          <circle r="2" fill="#ffffff" opacity="0.7">
+            <animateMotion
+              dur="0.8s"
+              repeatCount="indefinite"
+              path={`M${x1},${y1} L${x2},${y2}`}
+              begin="0.4s"
+            />
+          </circle>
+        </g>
       )}
 
+      {/* Flow Particles - Backward (reverse direction, amber) */}
       {isBackward && (
-        <circle r="3" fill="#fbbf24"> {/* Amber for gradients */}
-          <animateMotion
-            dur="1s"
-            repeatCount="indefinite"
-            path={`M${x2},${y2} L${x1},${y1}`} // Reverse direction
-          />
-        </circle>
+        <g key={`bwd-${epoch}-${phase}`}>
+          <circle r="4" fill="#fbbf24" opacity="0.9">
+            <animateMotion
+              dur="0.8s"
+              repeatCount="indefinite"
+              path={`M${x2},${y2} L${x1},${y1}`}
+            />
+          </circle>
+          <circle r="2" fill="#ffffff" opacity="0.7">
+            <animateMotion
+              dur="0.8s"
+              repeatCount="indefinite"
+              path={`M${x2},${y2} L${x1},${y1}`}
+              begin="0.4s"
+            />
+          </circle>
+        </g>
       )}
 
+      {/* Update Flash */}
       {isUpdate && (
         <line
+          key={`upd-${epoch}-${phase}`}
           x1={x1}
           y1={y1}
           x2={x2}
           y2={y2}
-          stroke="#10b981" // Emerald flash
-          strokeWidth={strokeWidth + 2}
-          opacity="0.5"
+          stroke="#10b981"
+          strokeWidth={strokeWidth + 3}
+          opacity="0"
+          strokeLinecap="round"
         >
           <animate
             attributeName="opacity"
             values="0;0.8;0"
-            dur="0.5s"
+            dur="0.6s"
             repeatCount="1"
+            fill="freeze"
           />
         </line>
       )}

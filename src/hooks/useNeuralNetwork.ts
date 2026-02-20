@@ -166,7 +166,6 @@ export const useNeuralNetwork = () => {
         outputActivations,
       };
     });
-    setPhase('FORWARD');
   }, []);
 
   const stepError = useCallback(() => {
@@ -180,7 +179,6 @@ export const useNeuralNetwork = () => {
         rawError: raw,
       };
     });
-    setPhase('ERROR');
   }, []);
 
   const stepBackward = useCallback(() => {
@@ -216,7 +214,6 @@ export const useNeuralNetwork = () => {
         hiddenGradients,
       };
     });
-    setPhase('BACKWARD');
   }, []);
 
   const stepUpdate = useCallback(() => {
@@ -252,7 +249,6 @@ export const useNeuralNetwork = () => {
         epoch: prev.epoch + 1,
       };
     });
-    setPhase('UPDATE');
   }, []);
 
   const stopAutoPlay = useCallback(() => {
@@ -272,31 +268,47 @@ export const useNeuralNetwork = () => {
     [state.epoch]
   );
 
+  const phaseRef = useRef<SimulationPhase>('IDLE');
+
+  // Keep the ref in sync with state
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+
   const nextStep = useCallback(() => {
-    setPhase((current) => {
-      switch (current) {
-        case 'IDLE':
-        case 'UPDATE':
-          stepForward();
-          return 'FORWARD';
-        case 'FORWARD':
-          stepError();
-          return 'ERROR';
-        case 'ERROR':
-          stepBackward();
-          return 'BACKWARD';
-        case 'BACKWARD':
-          stepUpdate();
-          return 'UPDATE';
-        default:
-          return 'IDLE';
-      }
-    });
+    const current = phaseRef.current;
+    switch (current) {
+      case 'IDLE':
+      case 'UPDATE':
+        stepForward();
+        setPhase('FORWARD');
+        phaseRef.current = 'FORWARD';
+        break;
+      case 'FORWARD':
+        stepError();
+        setPhase('ERROR');
+        phaseRef.current = 'ERROR';
+        break;
+      case 'ERROR':
+        stepBackward();
+        setPhase('BACKWARD');
+        phaseRef.current = 'BACKWARD';
+        break;
+      case 'BACKWARD':
+        stepUpdate();
+        setPhase('UPDATE');
+        phaseRef.current = 'UPDATE';
+        break;
+      default:
+        setPhase('IDLE');
+        phaseRef.current = 'IDLE';
+    }
   }, [stepForward, stepError, stepBackward, stepUpdate]);
 
   const reset = useCallback(() => {
     stopAutoPlay();
     setPhase('IDLE');
+    phaseRef.current = 'IDLE';
     setState((prev) => ({
       ...prev,
       epoch: 0,

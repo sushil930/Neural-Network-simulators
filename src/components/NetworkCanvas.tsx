@@ -154,6 +154,7 @@ export const NetworkCanvas: React.FC<NetworkCanvasProps> = ({
                   weight={weight}
                   phase={phase}
                   showValues={showValues}
+                  epoch={state.epoch}
                   onClick={() =>
                     onWeightClick({
                       id: `m-${matrixIndex}-${sourceIndex}-${targetIndex}`,
