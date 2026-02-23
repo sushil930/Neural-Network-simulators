@@ -8,6 +8,7 @@ import { EducationPage } from './components/EducationPage';
 import { NeuronDetails, WeightDetails } from './types';
 import { Activity, Zap, BookOpen, CircleHelp } from 'lucide-react';
 import { TutorialTour, TourStep } from './components/TutorialTour';
+import { MobileWarning } from './components/MobileWarning';
 
 const TOUR_STEPS: TourStep[] = [
   {
@@ -131,17 +132,21 @@ export default function App() {
 
   if (page === 'education') {
     return (
-      <EducationPage
-        state={nn.state}
-        trainingLog={nn.trainingLog}
-        onBack={() => setPage('simulator')}
-        onClearLog={nn.clearLog}
-      />
+      <>
+        <EducationPage
+          state={nn.state}
+          trainingLog={nn.trainingLog}
+          onBack={() => setPage('simulator')}
+          onClearLog={nn.clearLog}
+        />
+        <MobileWarning />
+      </>
     );
   }
 
   return (
-    <div className="flex h-screen w-full bg-slate-950 overflow-hidden font-sans text-slate-200 selection:bg-indigo-500/30">
+    <>
+      <div className="flex h-screen w-full bg-slate-950 overflow-hidden font-sans text-slate-200 selection:bg-indigo-500/30">
       {/* Sidebar Controls */}
       <Sidebar
         state={nn.state}
@@ -243,6 +248,8 @@ export default function App() {
           )}
         </div>
       </div>
-    </div>
+      </div>
+      <MobileWarning />
+    </>
   );
 }
