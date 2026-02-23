@@ -4,6 +4,8 @@ Neural Network Simulator
 
 Interactive backpropagation visualizer built with React, Vite, TypeScript, Tailwind, and SVG-based animations. Tune a tiny feedforward network, step through each training phase, watch activations and gradients animate, and inspect detailed logs plus formula references.
 
+![Neural Network Simulator banner](public/banner.png)
+
 Contents
 --------
 - What you get
